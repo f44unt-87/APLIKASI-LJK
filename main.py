@@ -1,27 +1,29 @@
 import streamlit as st
 import cv2
 import numpy as np
+from streamlit_drawable_canvas import st_canvas
+from PIL import Image
 
-st.title("Deteksi Lingkaran Otomatis (Tanpa Koordinat)")
+st.title("Kalibrasi Titik Manual")
 
-up = st.file_uploader("Upload Foto LJK", type=['jpg', 'png'])
+uploaded_file = st.file_uploader("Upload Foto LJK", type=["jpg", "png"])
 
-if up and st.button("Proses Otomatis"):
-    file_bytes = np.asarray(bytearray(up.read()), dtype=np.uint8)
-    img = cv2.imdecode(file_bytes, 1)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+if uploaded_file:
+    img = cv2.imdecode(np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8), 1)
+    img_rgb = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+    pil_image = Image.fromarray(img_rgb)
     
-    # Deteksi lingkaran menggunakan HoughCircles
-    # Ini akan mencari semua bentuk lingkaran di kertas secara otomatis
-    circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, dp=1.2, minDist=20,
-                               param1=50, param2=30, minRadius=5, maxRadius=20)
+    st.write("Klik pada lingkaran 1A, 1E, dan 50E untuk melihat koordinatnya:")
     
-    vis = img.copy()
-    if circles is not None:
-        circles = np.uint16(np.around(circles))
-        for i in circles[0, :]:
-            # Gambar lingkaran merah pada setiap lingkaran yang ditemukan
-            cv2.circle(vis, (i[0], i[1]), i[2], (0, 0, 255), 2)
-            
-    st.image(cv2.cvtColor(vis, cv2.COLOR_BGR2RGB), use_column_width=True)
-    st.write(f"Ditemukan {len(circles[0])} lingkaran.")
+    canvas = st_canvas(
+        background_image=pil_image,
+        width=pil_image.width,
+        height=pil_image.height,
+        drawing_mode="point",
+        key="canvas",
+    )
+
+    if canvas.json_data is not None:
+        for obj in canvas.json_data["objects"]:
+            x, y = obj["left"], obj["top"]
+            st.write(f"Koordinat ditemukan: x={int(x)}, y={int(y)}")

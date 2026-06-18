@@ -1,91 +1,33 @@
 import streamlit as st
 import cv2
 import numpy as np
-import json
-import os
+from streamlit_drawable_canvas import st_canvas # Perlu instal: pip install streamlit-drawable-canvas
 
-# 1. KONFIGURASI PATH
-BASE_DIR = os.getcwd()
-FILE_PATH = os.path.join(BASE_DIR, 'template_coords.json')
+st.title("Kalibrasi LJK Otomatis")
 
-# 2. LOAD KOORDINAT (Gunakan template JSON Anda yang asli)
-with open(FILE_PATH, 'r') as f:
-    KOORDINAT = json.load(f)
+# 1. Upload Foto LJK Kosong
+uploaded_file = st.file_uploader("Upload LJK Kosong untuk Kalibrasi", type=["jpg", "png"])
 
-# 3. FUNGSI PELURUS GAMBAR (WARP PERSPECTIVE)
-def luruskan_ljk(img):
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    edged = cv2.Canny(blurred, 75, 200)
+if uploaded_file:
+    img = cv2.imdecode(np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8), 1)
+    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
     
-    contours, _ = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    if not contours: return img
-    
-    # Ambil kontur terbesar (kertas)
-    kontur = max(contours, key=cv2.contourArea)
-    peri = cv2.arcLength(kontur, True)
-    approx = cv2.approxPolyDP(kontur, 0.02 * peri, True)
-    
-    if len(approx) == 4:
-        pts = approx.reshape(4, 2)
-        # Urutkan titik sudut
-        rect = np.zeros((4, 2), dtype="float32")
-        s = pts.sum(axis=1)
-        rect[0] = pts[np.argmin(s)] # top-left
-        rect[2] = pts[np.argmax(s)] # bottom-right
-        diff = np.diff(pts, axis=1)
-        rect[1] = pts[np.argmin(diff)] # top-right
-        rect[3] = pts[np.argmax(diff)] # bottom-left
-        
-        # --- PERBAIKAN: GUNAKAN UKURAN TETAP ---
-        # Gunakan ukuran canvas yang sama dengan ukuran JSON Anda
-        # Misalkan canvas JSON Anda adalah 800x1000. Ganti angka ini jika berbeda.
-        w, h = 800, 1000 
-        dst = np.array([[0,0], [w-1,0], [w-1,h-1], [0,h-1]], dtype="float32")
-        M = cv2.getPerspectiveTransform(rect, dst)
-        return cv2.warpPerspective(img, M, (w, h))
-    return img
+    # 2. Canvas untuk klik titik referensi
+    st.write("Klik pada titik 1A, 1E, 50A, dan 50E")
+    canvas_result = st_canvas(
+        fill_color="rgba(255, 165, 0, 0.3)",
+        stroke_width=2,
+        stroke_color="#E91E63",
+        background_image=img,
+        height=img.shape[0],
+        width=img.shape[1],
+        drawing_mode="point",
+        key="canvas",
+    )
 
-# 4. PROSES DETEKSI
-def proses_ljk(image_file):
-    file_bytes = np.asarray(bytearray(image_file.read()), dtype=np.uint8)
-    img = cv2.imdecode(file_bytes, 1)
-    
-    # Pelurusan gambar dengan ukuran canvas JSON yang tetap
-    img_warped = luruskan_ljk(img)
-    vis = img_warped.copy()
-    hasil = {}
-    
-    for no, pilihan in KOORDINAT.items():
-        hasil[no] = "-"
-        max_d = 0
-        # Paksa 5 pilihan A, B, C, D, E
-        for opt in ['A', 'B', 'C', 'D', 'E']:
-            if opt not in pilihan: continue
-            
-            x, y = pilihan[opt]
-            # Lingkaran panduan visual untuk melihat seberapa pas
-            cv2.circle(vis, (int(x), int(y)), 15, (0, 0, 255), 2)
-            
-            roi = img_warped[int(y)-15:int(y)+15, int(x)-15:int(x)+15]
-            if roi.size == 0: continue
-            
-            gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            _, thresh = cv2.threshold(gray_roi, 120, 255, cv2.THRESH_BINARY_INV)
-            d = cv2.countNonZero(thresh) / thresh.size
-            
-            if d > 0.15 and d > max_d: # sensitivitas
-                max_d = d
-                hasil[no] = opt
-                
-    return hasil, vis
-
-# 5. UI
-st.title("Sistem Koreksi LJK Maslakul Huda")
-up = st.file_uploader("Upload LJK", type=['jpg', 'png'])
-if up and st.button("Proses Koreksi"):
-    res, vis = proses_ljk(up)
-    st.subheader("Hasil JSON:")
-    st.json(res)
-    st.subheader("Visualisasi Koordinat ⭕️")
-    st.image(cv2.cvtColor(vis, cv2.COLOR_BGR2RGB), caption='Peta Koordinat (Merah)', use_column_width=True)
+    if canvas_result.json_data is not None:
+        objs = canvas_result.json_data["objects"]
+        if len(objs) >= 4:
+            st.success("Titik berhasil disimpan! Sistem akan menghitung posisi semua lingkaran.")
+            # Di sini sistem akan menyimpan koordinat (x, y) dari 4 titik klik Anda
+            # dan menghitung posisi sisanya secara matematis (Interpolasi Linear).

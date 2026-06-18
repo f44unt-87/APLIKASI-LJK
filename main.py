@@ -2,9 +2,15 @@ import streamlit as st
 import cv2
 import numpy as np
 import json
+import os
 
-# Memuat koordinat dari file JSON
-with open('template_coords.json', 'r') as f:
+
+# Mendapatkan direktori tempat main.py berada
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FILE_PATH = os.path.join(BASE_DIR, 'template_coords.json')
+
+# Memuat koordinat menggunakan path lengkap
+with open(FILE_PATH, 'r') as f:
     KOORDINAT = json.load(f)
 
 def proses_gambar(image):

@@ -2,26 +2,27 @@ import streamlit as st
 import cv2
 import numpy as np
 
-# --- SETTING PRESISI (Ubah angka ini sedikit demi sedikit) ---
-# START_Y = posisi y nomor 1, ROW_GAP = jarak antar baris, COL_GAP = jarak antar kolom
-START_Y = 350  # Coba ubah angka ini agar baris 1 pas
-ROW_GAP = 30   # Jarak vertikal antar baris
-COL_GAP = 30   # Jarak horizontal antar kolom A-B-C-D-E
-START_X = 220  # Coba ubah angka ini agar kolom A pas
-# ------------------------------------------------------------
-
 def proses_ljk(image_file):
     file_bytes = np.asarray(bytearray(image_file.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, 1)
+    
+    # 1. Resize agar ukuran selalu tetap (800x1000), ini kunci agar tidak kecil
+    img = cv2.resize(img, (800, 1000))
     vis = img.copy()
+    
+    # 2. KONFIGURASI PRESISI (Untuk gambar 800x1000)
+    START_X, START_Y = 100, 150 
+    ROW_GAP = 32
+    COL_GAP = 35
+    
     hasil = {}
     
     for i in range(1, 51):
-        # Logika pembagian kolom (10 nomor per kolom)
-        col = (i - 1) // 10 
+        col = (i - 1) // 10
         row = (i - 1) % 10
         
-        base_x = START_X + (col * (COL_GAP * 7)) # 7 adalah jarak antar kolom utama
+        # Kelompokkan menjadi 5 kolom (10 nomor per kolom)
+        base_x = START_X + (col * (COL_GAP * 6))
         base_y = START_Y + (row * ROW_GAP)
         
         hasil[i] = "-"
@@ -31,19 +32,20 @@ def proses_ljk(image_file):
             x = int(base_x + (j * COL_GAP))
             y = int(base_y)
             
-            # Gambar lingkaran untuk panduan kalibrasi
-            cv2.circle(vis, (x, y), 10, (0, 0, 255), 2)
+            # Gambar lingkaran panduan
+            cv2.circle(vis, (x, y), 12, (0, 0, 255), 2)
             
             roi = img[y-15:y+15, x-15:x+15]
             if roi.size == 0: continue
             
-            gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            _, thresh = cv2.threshold(gray_roi, 120, 255, cv2.THRESH_BINARY_INV)
-            d = cv2.countNonZero(thresh) / thresh.size
+            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+            _, thresh = cv2.threshold(gray, 120, 255, cv2.THRESH_BINARY_INV)
+            d = cv2.countNonZero(thresh) / roi.size
             
             if d > 0.15 and d > max_d:
                 max_d = d
                 hasil[i] = opt
+                
     return hasil, vis
 
 st.title("Sistem Koreksi LJK Presisi")

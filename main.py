@@ -2,40 +2,54 @@ import streamlit as st
 import cv2
 import numpy as np
 
-st.title("Koreksi LJK Stabil")
+# KONFIGURASI LAYOUT:
+# Ubah nilai-nilai di bawah ini jika lingkaran merah masih meleset 1-2 pixel
+START_X = 230   # Titik X nomor 1, kolom A
+START_Y = 360   # Titik Y nomor 1, kolom A
+GAP_X = 35      # Jarak antar kolom (A-B, B-C, dst)
+GAP_Y = 32      # Jarak antar baris (Nomor 1-2, 2-3, dst)
 
-uploaded_file = st.file_uploader("Upload Foto LJK", type=["jpg", "png", "jpeg"])
+st.title("Koreksi LJK Final")
+up = st.file_uploader("Upload Foto LJK", type=['jpg', 'png'])
 
-if uploaded_file:
-    # 1. Decode gambar
-    file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
-    img = cv2.imdecode(file_bytes, 1)
-    
-    # 2. Resize agar ukuran seragam (kunci agar tidak error)
-    img = cv2.resize(img, (800, 1000))
-    
-    # 3. Deteksi Lingkaran (HoughCircles) yang lebih sensitif
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    
-    # blur sedikit untuk menghilangkan noise
-    gray = cv2.medianBlur(gray, 5)
-    
-    # Gunakan deteksi lingkaran dengan parameter yang disesuaikan untuk LJK Anda
-    circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, dp=1, minDist=20,
-                               param1=50, param2=30, minRadius=10, maxRadius=25)
-    
+if up and st.button("Proses Koreksi"):
+    img = cv2.imdecode(np.asarray(bytearray(up.read()), dtype=np.uint8), 1)
+    # Resize ke ukuran standar agar koordinat tidak berubah-ubah
+    img = cv2.resize(img, (800, 1000)) 
     vis = img.copy()
-    if circles is not None:
-        circles = np.uint16(np.around(circles))
-        st.write(f"Ditemukan {len(circles[0])} lingkaran.")
+    hasil = {}
+
+    for i in range(1, 51):
+        # Logika pembagian kolom (10 nomor per kolom)
+        col = (i - 1) // 10
+        row = (i - 1) % 10
         
-        # Urutkan lingkaran berdasarkan posisi Y (dari atas ke bawah)
-        sorted_circles = sorted(circles[0, :], key=lambda x: x[1])
+        # Hitung posisi X dan Y
+        base_x = START_X + (col * GAP_X * 6)
+        base_y = START_Y + (row * GAP_Y)
         
-        for i in sorted_circles:
-            # Gambar lingkaran merah
-            cv2.circle(vis, (i[0], i[1]), i[2], (0, 0, 255), 2)
-    else:
-        st.warning("Tidak ditemukan lingkaran. Pastikan foto tidak terlalu buram.")
+        jawaban = "-"
+        max_d = 0
         
+        for j, opt in enumerate(['A','B','C','D','E']):
+            x = int(base_x + (j * GAP_X))
+            y = int(base_y)
+            
+            # Gambar lingkaran merah sebagai panduan
+            cv2.circle(vis, (x, y), 12, (0, 0, 255), 2)
+            
+            # Deteksi hitam
+            roi = img[y-15:y+15, x-15:x+15]
+            if roi.size == 0: continue
+            
+            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+            _, thresh = cv2.threshold(gray, 120, 255, cv2.THRESH_BINARY_INV)
+            d = cv2.countNonZero(thresh) / thresh.size
+            
+            if d > 0.15 and d > max_d:
+                max_d = d
+                jawaban = opt
+        hasil[i] = jawaban
+
+    st.json(hasil)
     st.image(cv2.cvtColor(vis, cv2.COLOR_BGR2RGB))

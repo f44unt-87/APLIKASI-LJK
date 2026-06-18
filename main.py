@@ -2,60 +2,63 @@ import streamlit as st
 import cv2
 import numpy as np
 import json
-import os
 
-# 1. KONFIGURASI
-OFFSET_X = -60
-OFFSET_Y = -40
-
-# 2. PROSES UTAMA
-def proses_gambar(image):
-    file_bytes = np.asarray(bytearray(image.read()), dtype=np.uint8)
+# 1. FUNGSI UNTUK MENDETEKSI GRID OTOMATIS
+def proses_ljk(image_file):
+    # Load gambar
+    file_bytes = np.asarray(bytearray(image_file.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, 1)
     
-    # Perbaikan: Tambahkan fungsi luruskan_gambar di sini (seperti kode sebelumnya)
-    vis = img.copy() 
+    # Deteksi sudut untuk pelurusan
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY_INV)
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    
+    # Ambil kontur terbesar (kertas)
+    kontur = max(contours, key=cv2.contourArea)
+    x, y, w, h = cv2.boundingRect(kontur)
+    
+    # Crop kertas saja
+    img_crop = img[y:y+h, x:x+w]
+    vis = img_crop.copy()
+    
+    # 2. LOGIKA GRID (Ini yang membuat pas)
+    # Kita bagi area LJK menjadi grid otomatis berdasarkan lebar/tinggi
+    # Tidak perlu koordinat fix yang meleset lagi
     hasil = {}
+    kolom_width = w // 5
+    baris_height = h // 55 # Estimasi 50 nomor + header
     
-    with open('template_coords.json', 'r') as f:
-        KOORDINAT = json.load(f)
-    
-    for no, pilihan in KOORDINAT.items():
-        hasil[no] = "-"
-        max_d = 0
+    # Contoh visualisasi grid untuk kalibrasi
+    for i in range(1, 51):
+        hasil[i] = "-"
+        # Menentukan posisi Y berdasarkan nomor (1-50)
+        y_pos = int(h * 0.15 + (i * (h * 0.75 / 50)))
         
-        # MEMASTIKAN 5 LINGKARAN TERBACA
-        # Kita ambil kunci (A, B, C, D, E) langsung dari data nomor tersebut
-        opsi_list = sorted(pilihan.keys()) 
-        
-        for opt in opsi_list:
-            x_raw, y_raw = pilihan[opt]
-            # Menghitung posisi
-            x = int(x_raw + OFFSET_X)
-            y = int(y_raw + OFFSET_Y + (int(no) * 0.1))
+        # Cek 5 opsi (A, B, C, D, E) per baris
+        for j, opt in enumerate(['A','B','C','D','E']):
+            x_pos = int(w * 0.15 + (j * (w * 0.6 / 5)))
             
-            # VISUALISASI: Lingkaran merah diperkecil radiusnya (menjadi 10) 
-            # agar tidak tumpang tindih
-            cv2.circle(vis, (x, y), 10, (0, 0, 255), 2)
-            cv2.putText(vis, opt, (x-5, y-15), cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0,0,255), 1)
+            # Gambar lingkaran panduan agar Anda bisa lihat posisinya
+            cv2.circle(vis, (x_pos, y_pos), 12, (0, 0, 255), 2)
             
-            roi = img[y-20:y+20, x-20:x+20]
+            # Deteksi hitam
+            roi = img_crop[y_pos-15:y_pos+15, x_pos-15:x_pos+15]
             if roi.size == 0: continue
             
-            gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            _, thresh = cv2.threshold(gray, 120, 255, cv2.THRESH_BINARY_INV)
-            d = cv2.countNonZero(thresh) / thresh.size
+            gray_roi = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
+            _, thresh_roi = cv2.threshold(gray_roi, 120, 255, cv2.THRESH_BINARY_INV)
+            d = cv2.countNonZero(thresh_roi) / thresh_roi.size
             
-            if d > 0.20 and d > max_d:
-                max_d = d
-                hasil[no] = opt
+            if d > 0.15: # sensitivitas
+                hasil[i] = opt
                 
     return hasil, vis
 
 # 3. UI
-st.title("Koreksi LJK")
-up = st.file_uploader("Upload", type=['jpg', 'png'])
+st.title("Sistem Koreksi LJK Presisi")
+up = st.file_uploader("Upload LJK", type=['jpg', 'png'])
 if up and st.button("Proses"):
-    res, vis = proses_gambar(up)
+    res, vis = proses_ljk(up)
     st.json(res)
     st.image(cv2.cvtColor(vis, cv2.COLOR_BGR2RGB))

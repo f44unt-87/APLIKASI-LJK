@@ -50,12 +50,15 @@ def luruskan_gambar(img):
         return cv2.warpPerspective(img, M, (width, height))
     return img
 
-# 4. FUNGSI DETEKSI JAWABAN (Ditingkatkan Sensitivitasnya)
+# 4. FUNGSI DETEKSI DAN VISUALISASI JAWABAN
 def proses_gambar(image):
     file_bytes = np.asarray(bytearray(image.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, 1)
     
     img_warped = luruskan_gambar(img)
+    # Membuat salinan gambar untuk menggambar lingkaran merah ⭕️
+    img_visual = img_warped.copy()
+    
     hasil_jawaban = {}
     
     for no, pilihan in KOORDINAT.items():
@@ -68,10 +71,16 @@ def proses_gambar(image):
             if roi.size == 0: continue
             
             gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            # Threshold diturunkan ke 120 (semakin rendah = semakin sensitif)
             _, thresh = cv2.threshold(gray, 120, 255, cv2.THRESH_BINARY_INV)
-            
             kepadatan = cv2.countNonZero(thresh) / thresh.size
+            
+            # --- TAMBAHAN UNTUK VISUALISASI ---
+            # Menggambar lingkaran merah ⭕️ di titik koordinat yang ada di JSON
+            # x, y adalah pusat koordinat, 15 adalah radius, (0,0,255) adalah warna merah BGR, 2 adalah ketebalan
+            cv2.circle(img_visual, (x, y), 15, (0, 0, 255), 2)
+            # Menambahkan label opsi (A/B/C/D/E) di atas lingkaran
+            cv2.putText(img_visual, opsi, (x-7, y-20), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+            # -----------------------------------
             
             # Toleransi kepadatan diturunkan ke 20% agar coretan tipis terdeteksi
             if kepadatan > 0.20 and kepadatan > max_density:
@@ -80,7 +89,7 @@ def proses_gambar(image):
         
         hasil_jawaban[no] = jawaban_terpilih
     
-    return hasil_jawaban
+    return hasil_jawaban, img_visual
 
 # 5. UI STREAMLIT
 st.title("Koreksi LJK Maslakul Huda")
@@ -90,8 +99,18 @@ if uploaded_file:
     st.image(uploaded_file, caption='Foto LJK yang diunggah')
     if st.button("Mulai Koreksi"):
         try:
-            hasil = proses_gambar(uploaded_file)
-            st.success("Hasil Koreksi:")
-            st.json(hasil)
+            with st.spinner('Memproses...'):
+                hasil, img_visual = proses_gambar(uploaded_file)
+                st.success("Hasil Koreksi:")
+                st.json(hasil)
+                
+                # --- MENAMPILKAN HASIL VISUALISASI ⭕️ ---
+                st.subheader("Visualisasi Koordinat ⭕️")
+                st.write("Jika lingkaran merah tidak pas di tengah lingkaran ABCDE asli, Anda harus mengubah nilai [x, y] di `template_coords.json`.")
+                # Konversi BGR OpenCV ke RGB Streamlit
+                img_visual_rgb = cv2.cvtColor(img_visual, cv2.COLOR_BGR2RGB)
+                st.image(img_visual_rgb, caption='Peta Koordinat di Kertas (Merah)', use_column_width=True)
+                # -----------------------------------------
+                
         except Exception as e:
             st.error(f"Terjadi kesalahan saat memproses gambar: {e}")

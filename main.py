@@ -50,7 +50,7 @@ def luruskan_gambar(img):
         return cv2.warpPerspective(img, M, (width, height))
     return img
 
-# 4. FUNGSI DETEKSI JAWABAN
+# 4. FUNGSI DETEKSI JAWABAN (Ditingkatkan Sensitivitasnya)
 def proses_gambar(image):
     file_bytes = np.asarray(bytearray(image.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, 1)
@@ -63,17 +63,18 @@ def proses_gambar(image):
         max_density = 0
         
         for opsi, (x, y) in pilihan.items():
-            # Area deteksi ditingkatkan menjadi 20px dari pusat koordinat
-            roi = img_warped[y-20:y+20, x-20:x+20]
+            # Area deteksi ditingkatkan menjadi 25px dari pusat
+            roi = img_warped[y-25:y+25, x-25:x+25]
             if roi.size == 0: continue
             
             gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
-            _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY_INV)
+            # Threshold diturunkan ke 120 (semakin rendah = semakin sensitif)
+            _, thresh = cv2.threshold(gray, 120, 255, cv2.THRESH_BINARY_INV)
             
             kepadatan = cv2.countNonZero(thresh) / thresh.size
             
-            # Toleransi coretan 25% (lebih fleksibel untuk lingkaran tidak penuh)
-            if kepadatan > 0.25 and kepadatan > max_density:
+            # Toleransi kepadatan diturunkan ke 20% agar coretan tipis terdeteksi
+            if kepadatan > 0.20 and kepadatan > max_density:
                 max_density = kepadatan
                 jawaban_terpilih = opsi
         

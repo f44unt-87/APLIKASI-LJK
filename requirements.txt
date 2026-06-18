@@ -1,4 +1,5 @@
-opencv-python-headless
-imutils
 streamlit
+opencv-python-headless
 numpy
+imutils
+scipy

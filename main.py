@@ -8,7 +8,11 @@ import os
 BASE_DIR = os.getcwd()
 FILE_PATH = os.path.join(BASE_DIR, 'template_coords.json')
 
-# 2. LOAD DATA
+# 2. LOAD DATA KOORDINAT
+if not os.path.exists(FILE_PATH):
+    st.error(f"File {FILE_PATH} tidak ditemukan. Pastikan sudah di-upload ke root folder GitHub.")
+    st.stop()
+
 with open(FILE_PATH, 'r') as f:
     KOORDINAT = json.load(f)
 
@@ -19,14 +23,14 @@ def luruskan_gambar(img):
     edged = cv2.Canny(blurred, 75, 200)
     
     contours, _ = cv2.findContours(edged, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    kontur_terbesar = max(contours, key=cv2.contourArea)
+    if not contours: return img
     
+    kontur_terbesar = max(contours, key=cv2.contourArea)
     peri = cv2.arcLength(kontur_terbesar, True)
     approx = cv2.approxPolyDP(kontur_terbesar, 0.02 * peri, True)
     
     if len(approx) == 4:
         pts = approx.reshape(4, 2)
-        # Urutkan titik (top-left, top-right, bot-right, bot-left)
         rect = np.zeros((4, 2), dtype="float32")
         s = pts.sum(axis=1)
         rect[0] = pts[np.argmin(s)]
@@ -51,23 +55,30 @@ def proses_gambar(image):
     file_bytes = np.asarray(bytearray(image.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, 1)
     
-    # Luruskan foto sebelum diproses
     img_warped = luruskan_gambar(img)
-    
     hasil_jawaban = {}
+    
     for no, pilihan in KOORDINAT.items():
         jawaban_terpilih = "-"
         max_density = 0
+        
         for opsi, (x, y) in pilihan.items():
-            roi = img_warped[y-15:y+15, x-15:x+15]
+            # Area deteksi ditingkatkan menjadi 20px dari pusat koordinat
+            roi = img_warped[y-20:y+20, x-20:x+20]
             if roi.size == 0: continue
+            
             gray = cv2.cvtColor(roi, cv2.COLOR_BGR2GRAY)
             _, thresh = cv2.threshold(gray, 150, 255, cv2.THRESH_BINARY_INV)
+            
             kepadatan = cv2.countNonZero(thresh) / thresh.size
+            
+            # Toleransi coretan 25% (lebih fleksibel untuk lingkaran tidak penuh)
             if kepadatan > 0.25 and kepadatan > max_density:
                 max_density = kepadatan
                 jawaban_terpilih = opsi
+        
         hasil_jawaban[no] = jawaban_terpilih
+    
     return hasil_jawaban
 
 # 5. UI STREAMLIT
@@ -75,10 +86,11 @@ st.title("Koreksi LJK Maslakul Huda")
 uploaded_file = st.file_uploader("Upload Foto LJK", type=['jpg', 'png', 'jpeg'])
 
 if uploaded_file:
+    st.image(uploaded_file, caption='Foto LJK yang diunggah')
     if st.button("Mulai Koreksi"):
         try:
             hasil = proses_gambar(uploaded_file)
             st.success("Hasil Koreksi:")
             st.json(hasil)
         except Exception as e:
-            st.error(f"Gagal memproses gambar. Pastikan 4 sudut LJK terlihat jelas. Error: {e}")
+            st.error(f"Terjadi kesalahan saat memproses gambar: {e}")

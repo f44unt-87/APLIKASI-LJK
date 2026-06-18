@@ -1,32 +1,41 @@
 import streamlit as st
 import cv2
 import numpy as np
-from imutils.perspective import four_point_transform # Pastikan install imutils
 
-def process_ljk(image):
-    # 1. Konversi ke grayscale
-    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    
-    # 2. Deteksi tepi kertas
-    edged = cv2.Canny(blurred, 75, 200)
-    cnts = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-    cnts = cnts[0] if len(cnts) == 2 else cnts[1]
-    
-    if len(cnts) > 0:
-        c = max(cnts, key=cv2.contourArea)
-        # 3. Transformasi perspektif (ini kunci agar posisi selalu pas)
-        warped = four_point_transform(image, c.reshape(4, 2))
-        return warped
-    return image
+st.title("Koreksi LJK Stabil")
 
-# Di bagian utama Streamlit:
-uploaded_file = st.file_uploader("Upload LJK")
+uploaded_file = st.file_uploader("Upload Foto LJK", type=["jpg", "png", "jpeg"])
+
 if uploaded_file:
+    # 1. Decode gambar
     file_bytes = np.asarray(bytearray(uploaded_file.read()), dtype=np.uint8)
     img = cv2.imdecode(file_bytes, 1)
     
-    # Panggil fungsi pelurusan yang stabil
-    img_fixed = process_ljk(img)
+    # 2. Resize agar ukuran seragam (kunci agar tidak error)
+    img = cv2.resize(img, (800, 1000))
     
-    st.image(cv2.cvtColor(img_fixed, cv2.COLOR_BGR2RGB))
+    # 3. Deteksi Lingkaran (HoughCircles) yang lebih sensitif
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    
+    # blur sedikit untuk menghilangkan noise
+    gray = cv2.medianBlur(gray, 5)
+    
+    # Gunakan deteksi lingkaran dengan parameter yang disesuaikan untuk LJK Anda
+    circles = cv2.HoughCircles(gray, cv2.HOUGH_GRADIENT, dp=1, minDist=20,
+                               param1=50, param2=30, minRadius=10, maxRadius=25)
+    
+    vis = img.copy()
+    if circles is not None:
+        circles = np.uint16(np.around(circles))
+        st.write(f"Ditemukan {len(circles[0])} lingkaran.")
+        
+        # Urutkan lingkaran berdasarkan posisi Y (dari atas ke bawah)
+        sorted_circles = sorted(circles[0, :], key=lambda x: x[1])
+        
+        for i in sorted_circles:
+            # Gambar lingkaran merah
+            cv2.circle(vis, (i[0], i[1]), i[2], (0, 0, 255), 2)
+    else:
+        st.warning("Tidak ditemukan lingkaran. Pastikan foto tidak terlalu buram.")
+        
+    st.image(cv2.cvtColor(vis, cv2.COLOR_BGR2RGB))
